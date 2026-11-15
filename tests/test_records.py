@@ -204,10 +204,42 @@ def _edit(header: str, **changes: object) -> str:
         ("sp|P1|A Poly OS=Virus 1  OX=0000", {"pname": "New", "pe": 1.0}, "sp|P1|A New OS=Virus 1  OX=0000 PE=1"),
         ("x Name XX=1 OS=H OX=9606", {"extra": "XX=2 YY=3"}, "x Name XX=2 OS=H OX=9606 YY=3"),
         ("sp|P1|A X OS=H OS=M", {"os_name": ""}, "sp|P1|A X"),
+        (
+            "NP_000549.1 hemoglobin subunit beta [Homo sapiens]",
+            {"prefix": "DECOY"},
+            "DECOY|NP_000549.1 hemoglobin subunit beta [Homo sapiens]",
+        ),
+        (
+            "UniRef90_P69905 Hemoglobin subunit alpha n=2 Tax=Homo sapiens TaxID=9606",
+            {"prefix": "DECOY"},
+            "DECOY|UniRef90_P69905 Hemoglobin subunit alpha n=2 Tax=Homo sapiens TaxID=9606",
+        ),
+        (
+            "ENSP00000322421.5 pep gene_symbol:HBB",
+            {"prefix": "DECOY"},
+            "DECOY|ENSP00000322421.5 pep gene_symbol:HBB",
+        ),
     ],
 )
 def test_from_records_edits_only_the_changed_token(header: str, changes: dict[str, object], expected: str) -> None:
     assert _edit(header, **changes) == expected
+
+
+def test_from_records_bare_accession_prefix_edit() -> None:
+    """Setting prefix on an NCBI, UniRef, or Ensembl entry with raw_header builds db|ACC."""
+    for header in (
+        "NP_000549.1 hemoglobin subunit beta [Homo sapiens]",
+        "UniRef90_P69905 Hemoglobin subunit alpha n=2 Tax=Homo sapiens TaxID=9606",
+        "ENSP00000322421.5 pep gene_symbol:HBB",
+    ):
+        [entry] = read_fasta(io.StringIO(f">{header}\nMKV\n"))
+        rec = entry.to_record()
+        rec["prefix"] = "DECOY"
+        [out] = from_records([rec])
+        assert out.identifier == f"DECOY|{entry.accession}"
+        assert out.prefix == "DECOY"
+        assert out.accession == entry.accession
+        assert out.raw_header == f"DECOY|{header}"
 
 
 @pytest.mark.parametrize(
@@ -216,11 +248,17 @@ def test_from_records_edits_only_the_changed_token(header: str, changes: dict[st
         ({"identifier": "sp|P2|A", "accession": "P3"}, "identifier 'sp|P2|A' and accession"),
         ({"description": "Real desc", "gname": "ABC"}, "description and gname"),
         ({"accession": "P1_X", "entry_name": "N"}, "cannot be written"),
+        ({"accession": "NP_999.1"}, "cannot be written"),
     ],
 )
 def test_from_records_conflicting_edits(record: dict[str, object], match: str) -> None:
+    header = (
+        "NP_000549.1 hemoglobin"
+        if record.get("accession") == "NP_999.1"
+        else ("pdb|1MBA|A Chain" if "entry_name" in record else "sp|P1|A X GN=g")
+    )
     with pytest.raises(FastaWriteError, match=re.escape(match)):
-        _edit("pdb|1MBA|A Chain" if "entry_name" in record else "sp|P1|A X GN=g", **record)
+        _edit(header, **record)
 
 
 def test_from_records_without_raw_header() -> None:
@@ -231,6 +269,31 @@ def test_from_records_without_raw_header() -> None:
     assert from_records([{"identifier": "id"}])[0].sequence == ""
     with pytest.raises(FastaWriteError, match="description and gname"):
         from_records([{"identifier": "x", "description": "Real desc", "gname": "ABC"}])
+    with pytest.raises(FastaWriteError, match="identifier 'NP_000549.1' and accession were both set and disagree"):
+        from_records([{"identifier": "NP_000549.1", "accession": "NP_111111.2", "sequence": "MKV"}])
+    with pytest.raises(FastaWriteError, match="identifier 'plain_id' and accession were both set and disagree"):
+        from_records([{"identifier": "plain_id", "accession": "some_acc"}])
+
+    # Bare accessions without raw_header roundtrip to the same identifier and accession (issue #59).
+    (repro,) = from_records([{"identifier": "NP_000549.1", "sequence": "MKV", "accession": "NP_000549.1"}])
+    assert (repro.identifier, repro.accession) == ("NP_000549.1", "NP_000549.1")
+
+    headers = [
+        ">sp|P31946|1433B_HUMAN 14-3-3 protein beta/alpha OS=Homo sapiens OX=9606 GN=YWHAB PE=1 SV=3\nMKV\n",
+        ">pdb|1MBA|A Chain A, MYOGLOBIN\nMKV\n",
+        ">gi|12345|ref|NP_000001.1| some protein\nMKV\n",
+        ">plainid some description\nMKV\n",
+        ">NP_000549.1 hemoglobin subunit beta [Homo sapiens]\nMKV\n",
+        ">UniRef90_P69905 Hemoglobin subunit alpha n=2 Tax=Homo sapiens TaxID=9606\nMKV\n",
+        ">ENSP00000322421.5 pep gene_symbol:HBB\nMKV\n",
+        ">1MBA_1|Chain A|MYOGLOBIN|Aplysia limacina\nMKV\n",
+    ]
+    for text in headers:
+        [entry] = read_fasta(io.StringIO(text))
+        rec = entry.to_record()
+        del rec["raw_header"]
+        [out] = from_records([rec])
+        assert (out.identifier, out.accession) == (entry.identifier, entry.accession)
 
 
 @pytest.mark.parametrize(

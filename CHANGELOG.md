@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `from_records` accepts records without `raw_header` where the identifier is a bare accession (NCBI, UniRef, Ensembl, RCSB entity) and the `accession` column matches the identifier, rather than raising a conflict error (#59).
+
 ### Documentation
 
 - Add README examples for pandas and polars records and conversion back to entries.
