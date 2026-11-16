@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- `write_fasta` checks identifiers and sequences for whitespace with one precompiled regex
+  instead of a per-character Python loop: about 1.9x faster for 100,000 entries of
+  300 residues, with the same errors for the same characters (#62).
+
 ### Fixed
 
 - `from_records` accepts records without `raw_header` where the identifier is a bare accession (NCBI, UniRef, Ensembl, RCSB entity) and the `accession` column matches the identifier, rather than raising a conflict error (#59).

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import re
 from collections.abc import Iterable
 from pathlib import Path
 from typing import IO, TYPE_CHECKING
@@ -159,6 +160,11 @@ def _check_rebuilt_header(entry: SequenceEntry, header: str, index: int) -> None
             )
 
 
+# Matches exactly the characters for which str.isspace() is True, and runs in C
+# instead of one Python-level call per character (issue #62).
+_has_whitespace = re.compile(r"\s").search
+
+
 def _prepare_entry(entry: SequenceEntry, index: int, line_width: int) -> tuple[str, int]:
     """Validate ``entry`` and return its header line and sequence line step.
 
@@ -169,13 +175,13 @@ def _prepare_entry(entry: SequenceEntry, index: int, line_width: int) -> tuple[s
         raise FastaWriteError(
             "SequenceEntry has an empty identifier", index=index, hint="Set identifier to a non-empty token"
         )
-    if any(c.isspace() for c in entry.identifier):
+    if _has_whitespace(entry.identifier):
         raise FastaWriteError(
             f"SequenceEntry identifier {entry.identifier!r} contains whitespace",
             index=index,
             hint="The identifier ends at the first whitespace; put the rest in pname or description",
         )
-    if any(c.isspace() for c in entry.sequence):
+    if _has_whitespace(entry.sequence):
         raise FastaWriteError(
             f"SequenceEntry {entry.identifier!r} sequence contains whitespace",
             index=index,
