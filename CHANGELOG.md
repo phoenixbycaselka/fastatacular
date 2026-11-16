@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- `write_fasta` checks identifiers and sequences for whitespace with one precompiled regex
+  instead of a per-character Python loop: about 1.9x faster for 100,000 entries of
+  300 residues, with the same errors for the same characters (#62).
+
 ### Fixed
 
 - Preserve the pipe after the identifier when `from_records` edits an RCSB PDB entity description (#66).

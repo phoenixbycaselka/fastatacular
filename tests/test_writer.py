@@ -360,3 +360,28 @@ def test_old_pdb_pipe_form_rebuild_unchanged():
     assert rebuilt == ">pdb|1MBA|A Chain A, Myoglobin\nMKLVA\n"
     [again] = read_fasta(io.StringIO(rebuilt))
     assert (again.identifier, again.accession) == ("pdb|1MBA|A", "1MBA_A")
+
+
+_WHITESPACE = [" ", "\t", "\n", "\r", "\v", "\f", "\x1c", "\xa0", " "]
+
+
+@pytest.mark.parametrize("ch", _WHITESPACE)
+def test_whitespace_in_identifier_raises(ch):
+    entry = SequenceEntry(identifier=f"a{ch}b", sequence="ACDE")
+    with pytest.raises(FastaWriteError) as info:
+        _write_str([entry])
+    assert str(info.value) == f"Entry 0: SequenceEntry identifier {entry.identifier!r} contains whitespace"
+    assert info.value.hint == "The identifier ends at the first whitespace; put the rest in pname or description"
+
+
+@pytest.mark.parametrize("ch", _WHITESPACE)
+def test_whitespace_in_sequence_raises(ch):
+    entry = SequenceEntry(identifier="x", sequence=f"AC{ch}DE")
+    with pytest.raises(FastaWriteError) as info:
+        _write_str([entry])
+    assert str(info.value) == "Entry 0: SequenceEntry 'x' sequence contains whitespace"
+    assert info.value.hint == "Pass the residues only; the writer wraps the sequence itself"
+
+
+def test_empty_sequence_is_written_as_header_only():
+    assert _write_str([SequenceEntry(identifier="x", sequence="")]) == ">x\n"
