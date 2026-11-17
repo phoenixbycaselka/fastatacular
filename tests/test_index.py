@@ -506,3 +506,27 @@ def test_indented_headers_are_indexed(tmp_path):
     path.write_text("  >a\nMK\n\t>b\nPE\n")  # .fai needs whitespace-free sequence lines
     loaded = FastaIndex.from_fai(path, FastaIndex(path).write_fai())
     assert [(k, loaded[k].sequence) for k in loaded] == [("a", "MK"), ("b", "PE")]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        ">a\rMK\r>b\rPE\r",  # classic Mac line endings throughout
+        ">a\nMK\r>b\nPE\n",  # one stray CR ending the line before a header
+        ">a\nMK\r  >b\nPE\n",  # ... before an indented header
+    ],
+)
+def test_lone_cr_before_header_is_refused(tmp_path: Path, text: str) -> None:
+    p = _write(tmp_path, "cr", text)
+    assert [e.identifier for e in read_fasta(p)] == ["a", "b"]
+    # The byte scan only splits lines at "\n", so it would see one entry where the reader sees two.
+    with pytest.raises(FastaError, match="line endings") as info:
+        FastaIndex(p)
+    assert "write_fasta" in "".join(getattr(info.value, "__notes__", []))
+
+
+def test_lone_cr_not_before_header_is_indexed(tmp_path: Path) -> None:
+    # A CR inside a header or sequence line splits no entry, so the index agrees with the reader.
+    p = _write(tmp_path, "cr_inner", ">a desc\rMK\n>b\nP\rE\n")
+    ix = FastaIndex(p)
+    assert [(k, ix[k].sequence) for k in ix] == [(e.identifier, e.sequence) for e in read_fasta(p)]
