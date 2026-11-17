@@ -155,6 +155,8 @@ class FastaIndex(Mapping[str, SequenceEntry]):
                 first = _FIRST_HEADER.match(mm, start)
                 h = first.end() - 1 if first is not None else _next_header(mm, start)
                 _check_bytes_preamble(mm[start : size if h == -1 else h], self.path)
+                if mm.find(b"\r") != -1 and (cr := _LONE_CR_HEADER.search(mm)) is not None:
+                    raise _lone_cr(self.path, cr.start())
                 while h != -1:
                     eol = mm.find(b"\n", h)
                     header_end = size if eol == -1 else eol
@@ -396,6 +398,20 @@ class FastaIndex(Mapping[str, SequenceEntry]):
 # A '>' at the start of a line, after optional leading whitespace (as the parser allows).
 _FIRST_HEADER = re.compile(rb"[ \t\r\f\v]*>")
 _HEADER_AFTER_NL = re.compile(rb"\n[ \t\r\f\v]*>")
+
+
+# A header after a lone CR (a classic Mac line ending): the reader's universal newlines
+# start a new line there, but the byte scan splits lines only at "\n".
+_LONE_CR_HEADER = re.compile(rb"\r[ \t\r\f\v]*>")
+
+
+def _lone_cr(path: Path, offset: int) -> FastaError:
+    err = FastaError(f"Cannot index {path}: a header follows a bare CR at byte {offset} (classic Mac line endings)")
+    err.add_note(
+        "hint: FastaIndex supports LF and CRLF line endings only; rewrite the file with "
+        "write_fasta(read_fasta(src), dst), which reads CR line endings"
+    )
+    return err
 
 
 def _next_header(mm: mmap.mmap, pos: int) -> int:

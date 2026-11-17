@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `FastaIndex` silently mis-indexed a file with a bare CR (classic Mac) line ending
+  before a header, which `read_fasta` reads correctly: `>a\rMK\r>b\rPE\r` indexed as one
+  entry `a`, so `ix["b"]` raised `FastaKeyError`, `ix["a"]` claimed the file had changed
+  since it was indexed, and `write_fai` reported a missing final newline. It now raises
+  `FastaError` at construction with a hint to rewrite the file with `write_fasta`. A bare
+  CR inside a header or sequence line splits no entry and is indexed as before; LF and
+  CRLF files are unaffected.
+
 ## [1.5.1] (2026-11-16)
 
 ### Fixed
